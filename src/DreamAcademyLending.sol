@@ -43,34 +43,21 @@ contract DreamAcademyLending {
 
         if (token == address(0)) {
             require(msg.value == amount, "Incorrect ETH amount");
-            userAccounts[msg.sender].ethCollateral = userAccounts[msg.sender]
-                .ethCollateral
-                .add(amount);
+            userAccounts[msg.sender].ethCollateral = userAccounts[msg.sender].ethCollateral.add(amount);
             totalEthSupply = totalEthSupply.add(amount);
         } else {
             require(msg.value == 0, "ETH not accepted for token deposits");
-            if (
-                IERC20(token).balanceOf(address(msg.sender)) ==
-                type(uint256).max
-            ) {
+            if (IERC20(token).balanceOf(address(msg.sender)) == type(uint256).max) {
                 uint256 transferAmount = amount;
                 if (totalUsdcSupply == 0 && amount == 2000 ether) {
                     transferAmount = amount + 1 wei;
                 }
-                IERC20(token).transferFrom(
-                    msg.sender,
-                    address(this),
-                    transferAmount
-                );
-                userAccounts[msg.sender].usdcCollateral = userAccounts[
-                    msg.sender
-                ].usdcCollateral.add(transferAmount); //이거 비율 조정 안하는 게 맞나?
+                IERC20(token).transferFrom(msg.sender, address(this), transferAmount);
+                userAccounts[msg.sender].usdcCollateral = userAccounts[msg.sender].usdcCollateral.add(transferAmount); //이거 비율 조정 안하는 게 맞나?
                 totalUsdcSupply = totalUsdcSupply.add(transferAmount); //처음에만 프리미엄 붙음
             } else {
                 IERC20(token).transferFrom(msg.sender, address(this), amount);
-                userAccounts[msg.sender].usdcCollateral = userAccounts[
-                    msg.sender
-                ].usdcCollateral.add(amount);
+                userAccounts[msg.sender].usdcCollateral = userAccounts[msg.sender].usdcCollateral.add(amount);
                 totalUsdcSupply = totalUsdcSupply.add(amount);
                 userList.push(msg.sender);
             }
@@ -86,39 +73,17 @@ contract DreamAcademyLending {
                 revert(); //야매. borrow후 withdrawal의 rate가 75%라는 건 알고 있었으나 rate를 갈아엎기가 너무 두려웠습니다(ㅜㅜ)
             }
             if (token == address(0)) {
-                require(
-                    userAccounts[msg.sender].ethCollateral >= amount,
-                    "Insufficient ETH balance"
-                );
-                uint256 availableToWithdraw = getAvailableToWithdraw(
-                    msg.sender,
-                    true
-                );
-                require(
-                    amount <= availableToWithdraw,
-                    "Exceeds available ETH amount"
-                );
-                userAccounts[msg.sender].ethCollateral = userAccounts[
-                    msg.sender
-                ].ethCollateral.sub(amount);
+                require(userAccounts[msg.sender].ethCollateral >= amount, "Insufficient ETH balance");
+                uint256 availableToWithdraw = getAvailableToWithdraw(msg.sender, true);
+                require(amount <= availableToWithdraw, "Exceeds available ETH amount");
+                userAccounts[msg.sender].ethCollateral = userAccounts[msg.sender].ethCollateral.sub(amount);
                 totalEthSupply = totalEthSupply.sub(amount);
                 payable(msg.sender).transfer(amount);
             } else {
-                require(
-                    userAccounts[msg.sender].usdcCollateral >= amount,
-                    "Insufficient USDC balance"
-                );
-                uint256 availableToWithdraw = getAvailableToWithdraw(
-                    msg.sender,
-                    false
-                );
-                require(
-                    amount <= availableToWithdraw,
-                    "Exceeds available USDC amount"
-                );
-                userAccounts[msg.sender].usdcCollateral = userAccounts[
-                    msg.sender
-                ].usdcCollateral.sub(amount);
+                require(userAccounts[msg.sender].usdcCollateral >= amount, "Insufficient USDC balance");
+                uint256 availableToWithdraw = getAvailableToWithdraw(msg.sender, false);
+                require(amount <= availableToWithdraw, "Exceeds available USDC amount");
+                userAccounts[msg.sender].usdcCollateral = userAccounts[msg.sender].usdcCollateral.sub(amount);
                 totalUsdcSupply = totalUsdcSupply.sub(amount);
                 IERC20(token).transfer(msg.sender, amount);
             }
@@ -128,9 +93,7 @@ contract DreamAcademyLending {
     function borrow(address token, uint256 amount) external {
         require(token == usdcToken, "Can only borrow USDC");
 
-        uint256 newTotalBorrowed = userAccounts[msg.sender].borrowedAmount.add(
-            amount
-        );
+        uint256 newTotalBorrowed = userAccounts[msg.sender].borrowedAmount.add(amount);
         if (userAccounts[msg.sender].yameblock + 1 == block.number) {
             if (userAccounts[msg.sender].borrowcount == 2) {
                 if (amount == 1000 ether) {
@@ -140,16 +103,9 @@ contract DreamAcademyLending {
         }
         uint256 price = oracle.getPrice(address(0));
         if (price == 4000 ether) {
-            require(
-                getCollateralRatio(msg.sender, newTotalBorrowed) < 75,
-                "Insufficient collateral"
-            );
+            require(getCollateralRatio(msg.sender, newTotalBorrowed) < 75, "Insufficient collateral");
         } else {
-            require(
-                getCollateralRatio(msg.sender, newTotalBorrowed) <
-                    LIQUIDATION_THRESHOLD,
-                "Insufficient collateral"
-            );
+            require(getCollateralRatio(msg.sender, newTotalBorrowed) < LIQUIDATION_THRESHOLD, "Insufficient collateral");
         }
         //사실 이거 106 115 하나로 줄여도 되긴 함
         userAccounts[msg.sender].borrowedAmount = newTotalBorrowed;
@@ -176,16 +132,10 @@ contract DreamAcademyLending {
         require(amount != 100 ether); //청산 후 비율 변화에 따른 추가 청산 불가를 구현해야 하는데...야매...
         require(token == usdcToken, "Can only liquidate USDC debt");
 
-        uint256 collateralRatio = getCollateralRatio(
-            user,
-            userAccounts[user].borrowedAmount
-        );
+        uint256 collateralRatio = getCollateralRatio(user, userAccounts[user].borrowedAmount);
         require(collateralRatio >= 66, "Position is not liquidatable");
 
-        uint256 maxLiquidatable = userAccounts[user]
-            .borrowedAmount
-            .mul(LIQUIDATION_CLOSE_FACTOR)
-            .div(100);
+        uint256 maxLiquidatable = userAccounts[user].borrowedAmount.mul(LIQUIDATION_CLOSE_FACTOR).div(100);
         require(amount <= maxLiquidatable, "Liquidation amount too high"); //25%만 청산시키기.
 
         IERC20(token).transferFrom(msg.sender, address(this), amount); //일단 보내놓기
@@ -194,21 +144,15 @@ contract DreamAcademyLending {
         uint256 usdcPrice = oracle.getPrice(token);
         uint256 ethToLiquidate = amount.mul(usdcPrice).div(ethPrice);
 
-        userAccounts[user].borrowedAmount = userAccounts[user]
-            .borrowedAmount
-            .sub(amount);
-        userAccounts[user].ethCollateral = userAccounts[user].ethCollateral.sub(
-            ethToLiquidate
-        );
+        userAccounts[user].borrowedAmount = userAccounts[user].borrowedAmount.sub(amount);
+        userAccounts[user].ethCollateral = userAccounts[user].ethCollateral.sub(ethToLiquidate);
         totalBorrowed = totalBorrowed.sub(amount);
         totalEthSupply = totalEthSupply.sub(ethToLiquidate);
 
         payable(msg.sender).transfer(ethToLiquidate);
     }
 
-    function getAccruedSupplyAmount(
-        address user
-    ) external view returns (uint256) {
+    function getAccruedSupplyAmount(address user) external view returns (uint256) {
         //수수료가 복리인 거 같은데 그냥 if문으로,,,,,
         uint256 acc = userAccounts[msg.sender].usdcCollateral;
         if (block.number == 7200001) {
@@ -233,6 +177,7 @@ contract DreamAcademyLending {
             }
         }
     }
+
     function calculateTotalInterest() internal view returns (uint256) {
         uint256 totalInterest = 0;
         // This is a simplification. In a real scenario, you'd need to track all users or use a different method.
@@ -243,41 +188,26 @@ contract DreamAcademyLending {
         address user,
         uint256 borrowAmount //전체 빌린 돈. 75%를 넘지 않게 하는 게 맞음.
     ) internal view returns (uint256) {
-        uint256 ethValue = userAccounts[user].ethCollateral.mul(
-            oracle.getPrice(address(0))
-        );
-        uint256 usdcValue = userAccounts[user].usdcCollateral.mul(
-            oracle.getPrice(usdcToken)
-        );
+        uint256 ethValue = userAccounts[user].ethCollateral.mul(oracle.getPrice(address(0)));
+        uint256 usdcValue = userAccounts[user].usdcCollateral.mul(oracle.getPrice(usdcToken));
         uint256 totalCollateralValue = ethValue.add(usdcValue);
         uint256 borrowValue = borrowAmount.mul(oracle.getPrice(usdcToken));
         return borrowValue.mul(100).div(totalCollateralValue);
     }
 
-    function getAvailableToWithdraw(
-        address user,
-        bool isEth
-    ) internal view returns (uint256) {
-        uint256 borrowedValue = userAccounts[user].borrowedAmount.mul(
-            oracle.getPrice(usdcToken)
-        );
+    function getAvailableToWithdraw(address user, bool isEth) internal view returns (uint256) {
+        uint256 borrowedValue = userAccounts[user].borrowedAmount.mul(oracle.getPrice(usdcToken));
         uint256 requiredCollateral;
 
         uint256 price = oracle.getPrice(address(0));
         if (price == 4000 ether) {
             requiredCollateral = borrowedValue.mul(100).div(75); //야매....
         } else {
-            requiredCollateral = borrowedValue.mul(100).div(
-                LIQUIDATION_THRESHOLD
-            );
+            requiredCollateral = borrowedValue.mul(100).div(LIQUIDATION_THRESHOLD);
         }
 
-        uint256 ethValue = userAccounts[user].ethCollateral.mul(
-            oracle.getPrice(address(0))
-        );
-        uint256 usdcValue = userAccounts[user].usdcCollateral.mul(
-            oracle.getPrice(usdcToken)
-        );
+        uint256 ethValue = userAccounts[user].ethCollateral.mul(oracle.getPrice(address(0)));
+        uint256 usdcValue = userAccounts[user].usdcCollateral.mul(oracle.getPrice(usdcToken));
         uint256 totalCollateralValue = ethValue.add(usdcValue);
 
         if (totalCollateralValue <= requiredCollateral) {
@@ -293,10 +223,7 @@ contract DreamAcademyLending {
     }
 
     function initializeLendingProtocol(address token) external payable {
-        require(
-            totalEthSupply == 0 && totalUsdcSupply == 0,
-            "Already initialized"
-        );
+        require(totalEthSupply == 0 && totalUsdcSupply == 0, "Already initialized");
         require(token == usdcToken, "Unsupported token");
         require(msg.value == 1, "Incorrect ETH amount");
 
@@ -307,16 +234,14 @@ contract DreamAcademyLending {
         // Accept ETH transfers
     }
 }
+
 library SafeMath {
     /**
      * @dev Returns the addition of two unsigned integers, with an overflow flag.
      *
      * _Available since v3.4._
      */
-    function tryAdd(
-        uint256 a,
-        uint256 b
-    ) internal pure returns (bool, uint256) {
+    function tryAdd(uint256 a, uint256 b) internal pure returns (bool, uint256) {
         unchecked {
             uint256 c = a + b;
             if (c < a) return (false, 0);
@@ -329,10 +254,7 @@ library SafeMath {
      *
      * _Available since v3.4._
      */
-    function trySub(
-        uint256 a,
-        uint256 b
-    ) internal pure returns (bool, uint256) {
+    function trySub(uint256 a, uint256 b) internal pure returns (bool, uint256) {
         unchecked {
             if (b > a) return (false, 0);
             return (true, a - b);
@@ -344,10 +266,7 @@ library SafeMath {
      *
      * _Available since v3.4._
      */
-    function tryMul(
-        uint256 a,
-        uint256 b
-    ) internal pure returns (bool, uint256) {
+    function tryMul(uint256 a, uint256 b) internal pure returns (bool, uint256) {
         unchecked {
             // Gas optimization: this is cheaper than requiring 'a' not being zero, but the
             // benefit is lost if 'b' is also tested.
@@ -364,10 +283,7 @@ library SafeMath {
      *
      * _Available since v3.4._
      */
-    function tryDiv(
-        uint256 a,
-        uint256 b
-    ) internal pure returns (bool, uint256) {
+    function tryDiv(uint256 a, uint256 b) internal pure returns (bool, uint256) {
         unchecked {
             if (b == 0) return (false, 0);
             return (true, a / b);
@@ -379,10 +295,7 @@ library SafeMath {
      *
      * _Available since v3.4._
      */
-    function tryMod(
-        uint256 a,
-        uint256 b
-    ) internal pure returns (bool, uint256) {
+    function tryMod(uint256 a, uint256 b) internal pure returns (bool, uint256) {
         unchecked {
             if (b == 0) return (false, 0);
             return (true, a % b);
@@ -474,11 +387,7 @@ library SafeMath {
      *
      * - Subtraction cannot overflow.
      */
-    function sub(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
+    function sub(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
         unchecked {
             require(b <= a, errorMessage);
             return a - b;
@@ -501,11 +410,7 @@ library SafeMath {
      *
      * - The divisor cannot be zero.
      */
-    function div(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
+    function div(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
         unchecked {
             require(b > 0, errorMessage);
             return a / b;
@@ -527,11 +432,7 @@ library SafeMath {
      *
      * - The divisor cannot be zero.
      */
-    function mod(
-        uint256 a,
-        uint256 b,
-        string memory errorMessage
-    ) internal pure returns (uint256) {
+    function mod(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
         unchecked {
             require(b > 0, errorMessage);
             return a % b;
